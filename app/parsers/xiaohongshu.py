@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from html import unescape
+from html.parser import HTMLParser
 from urllib.parse import urlparse
 
 from app.config import settings
@@ -10,6 +12,32 @@ from app.security import normalize_https_url
 
 
 DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36"
+
+
+class _MetaParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.meta: list[dict[str, str]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() == "meta":
+            self.meta.append({key.lower(): value or "" for key, value in attrs})
+
+
+def _extract_from_meta_tags(html: str) -> tuple[str | None, str | None]:
+    """Read Open Graph video/title tags without assuming attribute order or quotes."""
+    parser = _MetaParser()
+    parser.feed(html)
+    values: dict[str, str] = {}
+    for attrs in parser.meta:
+        name = (attrs.get("property") or attrs.get("name") or "").lower()
+        content = unescape(attrs.get("content", "")).strip()
+        if name and content and name not in values:
+            values[name] = content
+    video_url = next((values.get(name) for name in (
+        "og:video", "og:video:url", "og:video:secure_url", "twitter:player:stream",
+    ) if values.get(name)), None)
+    return video_url, values.get("og:title") or values.get("og:description")
 
 
 def _find_note(data: dict, item_id: str | None = None) -> dict | None:
@@ -48,6 +76,18 @@ async def parse_xiaohongshu(url: str, client: PlatformClient) -> ParsedMedia:
         headers["Cookie"] = settings.xhs_cookie
     resolved = await client.resolve(url, headers)
     html = await client.get_text(resolved, headers)
+    meta_video_url, meta_title = _extract_from_meta_tags(html)
+    if meta_video_url:
+        item_id = urlparse(url).path.rstrip("/").split("/")[-1]
+        return ParsedMedia(
+            platform="xiaohongshu", item_id=item_id,
+            title=meta_title or f"小红书作品_{item_id}", cover_url=None,
+            media_urls=[("video", normalize_https_url(meta_video_url) or meta_video_url)],
+            headers={"User-Agent": DESKTOP_UA, "Referer": resolved},
+            author_name="", counts={},
+        )
+    if "/login" in resolved:
+        raise ValueError("小红书将分享页重定向到登录页；当前 Cookie 已失效或未被接受")
     data = load_embedded_json(html, "window.__INITIAL_STATE__")
     note = _find_note(data, urlparse(resolved).path.rstrip("/").split("/")[-1])
     if not note:

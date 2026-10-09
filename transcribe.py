@@ -23,7 +23,7 @@ TRANSCRIPTION_PROMPT = """请逐字转写音频中实际听到的内容，严格
 
 请根据语气和停顿添加中文标点。不要一句一行；同一话题连续成段。只有说话人切换、话题明显变化或较长停顿时才换段。
 
-只输出转写正文。"""
+直接输出转写正文，不要输出推理过程、时间戳、说话人标记。"""
 
 
 def load_config(path: Path) -> None:
@@ -65,7 +65,7 @@ def extract_audio(video_url: str, output: Path, headers: dict[str, str]) -> None
         command.extend(("-headers", request_headers))
     command.extend((
         "-i", video_url, "-map", "0:a:0", "-vn", "-ac", "1", "-ar", "16000",
-        "-c:a", "libmp3lame", "-b:a", "32k", str(output),
+        "-c:a", "libmp3lame", "-b:a", "128k", str(output),
     ))
     try:
         result = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=480)
@@ -93,30 +93,64 @@ async def transcribe_mimo(audio_path: Path) -> str:
             }},
         ]}],
     }
-    async with httpx.AsyncClient(timeout=httpx.Timeout(600, connect=15)) as client:
-        try:
-            response = await client.post(
-                "https://api.xiaomimimo.com/v1/chat/completions",
-                headers={"api-key": key}, json=payload,
-            )
-        except httpx.TimeoutException as exc:
-            raise RuntimeError("MiMo 转写超过 600 秒") from exc
-        if response.is_error:
-            hints = {401: "MiMo 密钥无效或已失效，请更新 MIMO_API_KEY", 402: "MiMo 额度不足，请到开放平台查看余额",
-                     403: "MiMo 拒绝访问，请检查账号和模型使用权限", 429: "MiMo 请求受限，请查看账号额度或稍后再试"}
-            raise RuntimeError(hints.get(response.status_code, f"MiMo 服务返回 HTTP {response.status_code}，本次未生成文稿"))
-        choice = response.json()["choices"][0]
-        if choice.get("finish_reason") not in (None, "stop"):
-            raise RuntimeError("MiMo 未完整结束转写，本次不保存可能被截断的文稿")
-        content = choice["message"]["content"]
-    if isinstance(content, list):
-        text = "".join(item if isinstance(item, str) else item.get("text", "") for item in content)
-    else:
-        text = str(content or "")
-    text = normalize_transcript(text)
-    if not text:
-        raise RuntimeError("MiMo 没有返回文稿")
-    return text
+
+    # Retry up to 3 times if we get empty content
+    for attempt in range(3):
+        async with httpx.AsyncClient(timeout=httpx.Timeout(600, connect=15)) as client:
+            try:
+                response = await client.post(
+                    "https://api.xiaomimimo.com/v1/chat/completions",
+                    headers={"api-key": key}, json=payload,
+                )
+            except httpx.TimeoutException as exc:
+                raise RuntimeError("MiMo 转写超过 600 秒") from exc
+            if response.is_error:
+                hints = {401: "MiMo 密钥无效或已失效，请更新 MIMO_API_KEY", 402: "MiMo 额度不足，请到开放平台查看余额",
+                         403: "MiMo 拒绝访问，请检查账号和模型使用权限", 429: "MiMo 请求受限，请查看账号额度或稍后再试"}
+                raise RuntimeError(hints.get(response.status_code, f"MiMo 服务返回 HTTP {response.status_code}，本次未生成文稿"))
+            resp_json = response.json()
+            choice = resp_json["choices"][0]
+
+            if choice.get("finish_reason") not in (None, "stop"):
+                raise RuntimeError("MiMo 未完整结束转写，本次不保存可能被截断的文稿")
+
+            content = choice["message"].get("content") or ""
+
+            # MiMo may put transcription in either 'content' or 'reasoning_content'
+            if not content:
+                # Try reasoning_content as fallback
+                reasoning = choice["message"].get("reasoning_content") or ""
+                if reasoning:
+                    # Extract text from reasoning_content (may contain timestamps and speaker labels)
+                    # Remove timestamp prefixes:
+                    # Format 1: "0.00-27.11 | SPEAKER_00: " or "0.00-27.11 | SPEAKER_00(description): "
+                    # Format 2: "00:00-00:27\n" (time on separate line)
+                    import re
+                    lines = reasoning.split('\n')
+                    cleaned_lines = []
+                    for line in lines:
+                        # Remove format 1: timestamp with speaker
+                        cleaned = re.sub(r'^\d+\.\d+-\d+\.\d+\s*\|\s*SPEAKER_\d+(\([^)]+\))?\s*:\s*', '', line)
+                        # Remove format 2: timestamp only (HH:MM:SS-HH:MM:SS or MM:SS-MM:SS)
+                        cleaned = re.sub(r'^\d{1,2}:\d{2}(?::\d{2})?-\d{1,2}:\d{2}(?::\d{2})?\s*', '', cleaned)
+                        if cleaned.strip():
+                            cleaned_lines.append(cleaned.strip())
+                    content = ' '.join(cleaned_lines)
+
+        if isinstance(content, list):
+            text = "".join(item if isinstance(item, str) else item.get("text", "") for item in content)
+        else:
+            text = str(content or "")
+        text = normalize_transcript(text)
+        if text:
+            if attempt > 0:
+                print(f"MiMo 第 {attempt + 1} 次尝试成功", file=sys.stderr)
+            return text
+        if attempt < 2:
+            print(f"MiMo 返回空内容，正在重试 ({attempt + 1}/3)...", file=sys.stderr)
+            await asyncio.sleep(2)
+
+    raise RuntimeError("MiMo 三次尝试均返回空文稿")
 
 
 async def process(text: str) -> dict:
