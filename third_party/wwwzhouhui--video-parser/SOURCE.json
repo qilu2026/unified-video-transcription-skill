@@ -2,5 +2,11 @@
   "repository": "https://github.com/wwwzhouhui/video-parser",
   "license_url": "https://github.com/wwwzhouhui/video-parser/blob/main/LICENSE",
   "blob_sha": "c630b857de087d314a5e0be16fb76370054465c1",
-  "checked_on": "2026-09-09"
+  "checked_on": "2026-10-12",
+  "branch": "main",
+  "checked_commit": "aa931d0006c0fce090541829cb819ab08e0d60df",
+  "used_for": "抖音：分享页数据结构",
+  "watch_paths": [
+    "src/downloaders/douyin_downloader.py"
+  ]
 }

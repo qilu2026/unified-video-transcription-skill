@@ -85,6 +85,26 @@ def test_importing_the_module_does_not_write_anything(tmp_path, monkeypatch):
     assert before == after
 
 
+def test_every_source_has_upstream_baseline():
+    """scripts/check_upstream.py 只检查记了 checked_commit 的来源；漏记就会被悄悄跳过。"""
+    import json
+
+    for path in sorted((ROOT / "third_party").glob("*/SOURCE.json")):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        assert len(data.get("checked_commit", "")) == 40, f"{path.parent.name} 缺少 checked_commit"
+        assert data.get("watch_paths"), f"{path.parent.name} 缺少 watch_paths"
+
+
+def test_smoke_links_skip_comments(tmp_path):
+    spec3 = importlib.util.spec_from_file_location("smoke_test", ROOT / "scripts" / "smoke_test.py")
+    smoke = importlib.util.module_from_spec(spec3)
+    spec3.loader.exec_module(smoke)
+    links = tmp_path / "links.txt"
+    links.write_text("# 注释\n\nhttps://v.kuaishou.com/a\n  # 缩进的注释\n7.15 复制打开抖音 https://v.douyin.com/b/ x\n", encoding="utf-8")
+    assert smoke.read_links(links) == ["https://v.kuaishou.com/a", "7.15 复制打开抖音 https://v.douyin.com/b/ x"]
+    assert smoke.guess_platform("7.15 复制打开抖音 https://v.douyin.com/b/ x") == "抖音"
+
+
 @pytest.mark.parametrize("missing", ["app/parsers/xiaohongshu.py", "transcribe.py"])
 def test_differences_reports_missing_files(tmp_path, missing):
     root = tmp_path / "repo"

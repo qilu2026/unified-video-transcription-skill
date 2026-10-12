@@ -2,7 +2,9 @@
 
 本文件记录 Skill 每一部分的技术来源。平台改版导致解析失败时，先查对应来源项目有没有跟进更新，再动自己的代码。
 
-"核对提交"是最近一次核对时来源项目默认分支的最新提交。跟进更新时，比较来源项目当前的提交和这里记录的值；有新提交就看它的提交记录和 issue，尤其是解析失败、风控、签名相关的修复。
+"核对提交"是最近一次核对时来源项目默认分支的最新提交，同时记在 `third_party/<名字>/SOURCE.json` 的 `checked_commit` 里，`watch_paths` 是我们关心的文件。
+
+跟进更新：运行 `python scripts/check_upstream.py`，它会列出每个来源的新提交，并标出哪些改动碰了 `watch_paths`，这类改动才需要跟。跟进完后运行 `python scripts/check_upstream.py --mark-checked <目录名>` 更新基准，再改这里的"核对提交"列。改完代码用 `python scripts/smoke_test.py` 拿真实链接把各平台跑一遍。
 
 ## 各平台的技术来源
 

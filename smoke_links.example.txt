@@ -1,0 +1,14 @@
+# scripts/smoke_test.py 的链接清单示例。
+# 复制一份命名为 smoke_links.txt（已被 .gitignore 忽略，不会提交），填入真实链接。
+#
+# 每行一条：直接粘贴平台的分享链接或整段分享文案都可以；# 开头的行是注释。
+# 建议每个平台放一两条，最好是刚分享出来的链接（小红书链接里的 xsec_token 会过期）。
+#
+# 小红书
+# https://www.xiaohongshu.com/discovery/item/作品ID?xsec_token=...&xsec_source=pc_share
+# 抖音
+# 7.15 复制打开抖音，看看【某某的作品】…… https://v.douyin.com/分享码/ ……
+# 快手
+# https://v.kuaishou.com/分享码
+# 视频号
+# https://weixin.qq.com/sph/分享码

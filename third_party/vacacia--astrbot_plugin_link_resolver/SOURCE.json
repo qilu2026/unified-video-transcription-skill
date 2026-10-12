@@ -2,5 +2,14 @@
   "repository": "https://github.com/vacacia/astrbot_plugin_link_resolver",
   "license_url": "https://github.com/vacacia/astrbot_plugin_link_resolver/blob/main/LICENSE",
   "blob_sha": "3423cecddf4a9053d5ad94784f53e91e828c2cf6",
-  "checked_on": "2026-10-12"
+  "checked_on": "2026-10-12",
+  "branch": "main",
+  "checked_commit": "c1b6c018854212d17e25a969a552944713beef87",
+  "used_for": "抖音：app/parsers/douyin_guest/ 原样复制自这里",
+  "watch_paths": [
+    "core/douyin/abogus.py",
+    "core/douyin/guest_api.py",
+    "core/douyin/websign.py",
+    "core/douyin/errors.py"
+  ]
 }

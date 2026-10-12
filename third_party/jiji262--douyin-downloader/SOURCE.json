@@ -2,5 +2,11 @@
   "repository": "https://github.com/jiji262/douyin-downloader",
   "license_url": "https://github.com/jiji262/douyin-downloader/blob/main/LICENSE",
   "blob_sha": "33dca94901b8af585c49f03109e249690cea3a38",
-  "checked_on": "2026-09-09"
+  "checked_on": "2026-10-12",
+  "branch": "main",
+  "checked_commit": "9874f413b2c1f8ad6e731b26e3e05f402fc964f8",
+  "used_for": "抖音：分享页数据结构；风控变化参考",
+  "watch_paths": [
+    "core/api_client.py"
+  ]
 }

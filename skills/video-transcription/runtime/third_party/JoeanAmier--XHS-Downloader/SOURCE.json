@@ -2,5 +2,13 @@
   "repository": "https://github.com/JoeanAmier/XHS-Downloader",
   "license_url": "https://github.com/JoeanAmier/XHS-Downloader/blob/master/LICENSE",
   "blob_sha": "f288702d2fa16d3cdf0035b15a9fcbc552cd88e7",
-  "checked_on": "2026-10-12"
+  "checked_on": "2026-10-12",
+  "branch": "master",
+  "checked_commit": "3261312721f0b37c705ba6515885bc7f34349f2f",
+  "used_for": "小红书：curl_cffi 浏览器指纹（IMPERSONATE）",
+  "watch_paths": [
+    "source/module/static.py",
+    "source/application/request.py",
+    "source/module/manager.py"
+  ]
 }
