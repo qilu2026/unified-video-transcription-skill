@@ -44,7 +44,7 @@ USER_AGENT_HEADERS = ("user-agent",)
 PLATFORM_GROUPS = (
     {"douyin.com", "iesdouyin.com"},
     {"kuaishou.com", "kuaishou.cn", "m.chenzhongtech.com", "m.gifshow.com"},
-    {"xiaohongshu.com", "xhslink.com"},
+    {"xiaohongshu.com", "xhslink.com", "xhslink.cn"},
     {"weixin.qq.com"},
 )
 

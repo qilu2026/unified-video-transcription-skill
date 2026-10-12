@@ -18,7 +18,7 @@ async def parse_link(text: str, client: PlatformClient) -> ParsedMedia:
         return await parse_douyin(url, client)
     if host_matches(host, {"kuaishou.com", "kuaishou.cn", "m.chenzhongtech.com", "m.gifshow.com"}):
         return await parse_kuaishou(url, client)
-    if host_matches(host, {"xhslink.com", "xiaohongshu.com"}):
+    if host_matches(host, {"xhslink.com", "xhslink.cn", "xiaohongshu.com"}):
         return await parse_xiaohongshu(url, client)
     if host_matches(host, {"weixin.qq.com"}):
         return await parse_weixin(url, client)

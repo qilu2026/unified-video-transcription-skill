@@ -21,6 +21,7 @@ PLATFORM_HOSTS = {
     "m.chenzhongtech.com",
     "m.gifshow.com",
     "xhslink.com",
+    "xhslink.cn",  # 小红书 App 分享出来的短链接用这个域名
     "xiaohongshu.com",
     "weixin.qq.com",
 }

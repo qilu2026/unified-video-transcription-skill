@@ -135,7 +135,8 @@ async def parse_xiaohongshu(url: str, client: PlatformClient) -> ParsedMedia:
     resolved, html = await _fetch_share_page(url, client, headers)
     meta_video_url, meta_title = _extract_from_meta_tags(html)
     if meta_video_url:
-        item_id = urlparse(url).path.rstrip("/").split("/")[-1]
+        # 用跳转后的地址取作品 ID：短链接（xhslink）的最后一段只是分享码
+        item_id = urlparse(resolved).path.rstrip("/").split("/")[-1]
         return ParsedMedia(
             platform="xiaohongshu", item_id=item_id,
             title=meta_title or f"小红书作品_{item_id}", cover_url=None,

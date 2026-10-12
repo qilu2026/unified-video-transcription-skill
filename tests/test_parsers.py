@@ -192,6 +192,19 @@ async def test_xiaohongshu_parser():
 
 
 @pytest.mark.asyncio
+async def test_xiaohongshu_app_short_link_domain_is_supported():
+    """小红书 App 分享出来的是 xhslink.cn；作品 ID 要取跳转后的地址，不是短链接的分享码。"""
+    from app.security import extract_platform_url
+
+    text = "Opus5.5档位越高越好吗？... https://xhslink.cn/o/2MIOGXkdWZD 把这段话复制下来，打开【小红书】查看。"
+    assert extract_platform_url(text) == "https://xhslink.cn/o/2MIOGXkdWZD"
+    page = '<meta property="og:video" content="https://sns-video.example/v.mp4"><meta property="og:title" content="标题">'
+    client = FakeClient("https://www.xiaohongshu.com/discovery/item/6ac8e0dd0000000018006539?xsec_token=x", page)
+    parsed = await parse_xiaohongshu("https://xhslink.cn/o/2MIOGXkdWZD", client)
+    assert parsed.item_id == "6ac8e0dd0000000018006539"
+
+
+@pytest.mark.asyncio
 async def test_xiaohongshu_expired_link_says_reshare_not_cookie():
     """xsec_token 过期会跳到 /404；提示要让用户重新分享，而不是去配 Cookie。"""
     client = FakeClient("https://www.xiaohongshu.com/404?source=note", "<html>你访问的页面不见了</html>")

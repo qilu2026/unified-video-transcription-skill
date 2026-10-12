@@ -26,7 +26,7 @@ import transcribe  # noqa: E402
 
 PLATFORM_NAMES = {"xiaohongshu": "小红书", "douyin": "抖音", "kuaishou": "快手", "weixin": "视频号"}
 HOST_PLATFORMS = (
-    (("xiaohongshu.com", "xhslink.com"), "xiaohongshu"),
+    (("xiaohongshu.com", "xhslink.com", "xhslink.cn"), "xiaohongshu"),
     (("douyin.com", "iesdouyin.com"), "douyin"),
     (("kuaishou.com", "kuaishou.cn", "chenzhongtech.com", "gifshow.com"), "kuaishou"),
     (("weixin.qq.com",), "weixin"),
