@@ -177,6 +177,15 @@ def test_doctor_reports_missing_config(tmp_path, capsys):
     assert "找不到" in capsys.readouterr().out
 
 
+def test_default_output_path_uses_platform_and_clean_title(tmp_path):
+    result = {"platform": "douyin", "item_id": "123", "title": '香麻了！一块多/一瓶的"景田" #景田 #纯净水'}
+    first = transcribe.default_output_path(result, tmp_path)
+    assert first.name == "抖音_香麻了！一块多 一瓶的 景田.html"
+    first.write_text("x", encoding="utf-8")
+    assert transcribe.default_output_path(result, tmp_path).name == "抖音_香麻了！一块多 一瓶的 景田_2.html"
+    assert transcribe.default_output_path({"platform": "weixin", "item_id": "abc", "title": "#只有标签"}, tmp_path).name == "视频号_abc.html"
+
+
 def test_cli_requires_link_unless_doctor(monkeypatch):
     monkeypatch.setattr("sys.argv", ["transcribe"])
     with pytest.raises(SystemExit):

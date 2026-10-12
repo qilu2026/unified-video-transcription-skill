@@ -219,6 +219,26 @@ async def process(text: str) -> dict:
     return make_result(parsed, source_url, transcript)
 
 
+DEFAULT_OUTPUT_DIR = Path.home() / "Downloads" / "视频转写"
+
+
+def default_output_path(result: dict, directory: Path = DEFAULT_OUTPUT_DIR) -> Path:
+    """没传 --output 时的位置：下载/视频转写/平台_标题.html，重名时加序号，不覆盖已有文稿。"""
+    from report import PLATFORMS
+
+    platform = PLATFORMS.get(result.get("platform", ""), result.get("platform") or "视频")
+    title = re.sub(r"#\S+", "", str(result.get("title") or ""))  # 话题标签不进文件名
+    title = re.sub(r'[\\/:*?"<>|\r\n\t]+', " ", title)
+    title = re.sub(r"\s+", " ", title).strip(" .")[:40].strip(" .") or str(result.get("item_id") or "文稿")
+    stem = f"{platform}_{title}"
+    candidate = directory / f"{stem}.html"
+    index = 2
+    while candidate.exists():
+        candidate = directory / f"{stem}_{index}.html"
+        index += 1
+    return candidate
+
+
 def write_reports(result: dict, output: Path, overwrite: bool = False) -> list[Path]:
     output = output.expanduser()
     if output.suffix.lower() != ".html":
@@ -314,23 +334,30 @@ def main() -> int:
     args = parser.parse_args()
     if args.doctor:
         return doctor(args.config.expanduser())
-    if not args.text or not args.output:
-        parser.error("需要提供分享链接和 --output；只检查环境时使用 --doctor")
+    if not args.text:
+        parser.error("需要提供分享链接；只检查环境时使用 --doctor")
     try:
         load_config(args.config.expanduser())
-        if args.output.suffix.lower() != ".html":
-            raise ValueError("--output 请指定 .html 文件")
-        args.output = args.output.expanduser()
-        if args.output.exists() and not args.overwrite:
-            raise ValueError("目标 HTML 已存在，请换一个文件名；确认要替换时使用 --overwrite")
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryFile(dir=args.output.parent):
+        # 不传 --output 时存到 下载/视频转写/，文件名要等解析出标题后才能定
+        target_dir = DEFAULT_OUTPUT_DIR
+        if args.output:
+            if args.output.suffix.lower() != ".html":
+                raise ValueError("--output 请指定 .html 文件")
+            args.output = args.output.expanduser().resolve()
+            if args.output.exists() and not args.overwrite:
+                raise ValueError("目标 HTML 已存在，请换一个文件名；确认要替换时使用 --overwrite")
+            target_dir = args.output.parent
+        target_dir.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryFile(dir=target_dir):
             pass
         if not os.getenv("MIMO_API_KEY", "").strip():
             raise ValueError("本机尚未配置 MiMo API Key")
         result = asyncio.run(process(args.text))
-        for output in write_reports(result, args.output, args.overwrite):
-            print(f"已生成文稿：{output}", file=sys.stderr)
+        output_path = args.output or default_output_path(result, target_dir)
+        for output in write_reports(result, output_path, args.overwrite):
+            # 结果写到 stdout（进度在 stderr），调用方据此给用户一个可点击的链接
+            print(f"已生成文稿：{output}")
+            print(f"打开链接：{output.resolve().as_uri()}")
         return 0
     except Exception as exc:
         print(f"转写失败：{exc}", file=sys.stderr)

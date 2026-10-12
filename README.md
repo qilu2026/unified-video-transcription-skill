@@ -83,8 +83,12 @@ Run this in an interactive terminal:
 ```text
 python skills/video-transcription/scripts/setup.py --with-yuanbao
 python skills/video-transcription/scripts/run.py --doctor
-python skills/video-transcription/scripts/run.py "视频链接" --output "文稿.html"
+python skills/video-transcription/scripts/run.py "视频链接"
 ```
+
+文稿默认存到 `下载/视频转写/平台_标题.html`，重名时自动加序号；需要别的位置时加 `--output "路径/文件名.html"`。
+
+Transcripts are saved to `Downloads/视频转写/<platform>_<title>.html` by default, with a number appended on name clashes. Add `--output "path/name.html"` to choose another location.
 
 `--doctor` 检查依赖、FFmpeg、MiMo 密钥（会用 1 秒静音真调一次，费用可忽略）和各平台 Cookie。安装后先运行一次；转写失败又看不出原因时也先运行它。
 
