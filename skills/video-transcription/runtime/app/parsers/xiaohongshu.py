@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import os
+import sys
 from html import unescape
 from html.parser import HTMLParser
 from urllib.parse import urlparse
@@ -12,6 +15,27 @@ from app.security import normalize_https_url
 
 
 DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36"
+
+# Gaps before each attempt at a share page, in seconds. The first attempt is immediate.
+# The /login wall turned out to be a TLS-fingerprint problem, not a request-count one:
+# httpx's Python/OpenSSL handshake was being read as a script and got 302s to /login
+# within milliseconds (it flipped instantly, with or without cookies, on every link form),
+# which is why waiting minutes never helped. With curl_cffi impersonating Chrome the very
+# same request returns 200 on the first try. Keep this short: it is for transient network
+# hiccups now, not for waiting out a block.
+DEFAULT_RETRY_DELAYS = (0, 30)
+
+
+def _retry_delays() -> tuple[int, ...]:
+    raw = os.getenv("XHS_RETRY_DELAYS", "").strip()
+    if not raw:
+        return DEFAULT_RETRY_DELAYS
+    try:
+        delays = tuple(int(item.strip()) for item in raw.split(",") if item.strip())
+    except ValueError:
+        print(f"XHS_RETRY_DELAYS 不是合法的秒数列表（{raw}），改用默认退避", file=sys.stderr)
+        return DEFAULT_RETRY_DELAYS
+    return delays or DEFAULT_RETRY_DELAYS
 
 
 class _MetaParser(HTMLParser):
@@ -66,16 +90,49 @@ def _best_stream_url(video: dict) -> str | None:
     return candidates[0][3] if candidates else None
 
 
+async def _fetch_share_page(
+    url: str, client: PlatformClient, headers: dict[str, str]
+) -> tuple[str, str]:
+    """Fetch the share page, retrying briefly if it lands on the /login wall.
+
+    Xiaohongshu answers with a 302 to /login when it distrusts the request. The cause was
+    the TLS fingerprint of the HTTP client, not the cookie, the link or the exit IP: the
+    same request through curl_cffi impersonating Chrome returns 200 immediately. See
+    IMPERSONATE in app/http_client.py. If this starts firing again, check that value
+    before changing anything here.
+
+    Returns (resolved_url, html); resolved_url points at /login if the wall never lifted.
+    """
+    # Measured: the wall outlasts 230s, so a short tight backoff just spends the
+    # request budget that keeps it closed. Few knocks, spread over several minutes.
+    delays = _retry_delays()
+    resolved, html = url, ""
+    for attempt, delay in enumerate(delays):
+        if delay:
+            print(f"小红书访问受限，{delay} 秒后重试（第 {attempt + 1}/{len(delays)} 次）...", file=sys.stderr)
+            await asyncio.sleep(delay)
+        # browser_fingerprint=True 是关键：小红书认 TLS 指纹，不要自带 User-Agent
+        resolved, html = await client.get_page(
+            url, headers, browser_fingerprint=True
+        )
+        if _extract_from_meta_tags(html)[0]:
+            return resolved, html
+        if "/login" not in resolved:
+            # Not a login wall: a real page without og:video. Let the caller decide.
+            return resolved, html
+    return resolved, html
+
+
 async def parse_xiaohongshu(url: str, client: PlatformClient) -> ParsedMedia:
+    # 这里刻意不设 User-Agent：真实指纹由 PlatformClient 的 impersonate 提供，
+    # 两边对不上会直接退回 /login。DESKTOP_UA 只用于下载视频时的请求头。
     headers = {
-        "User-Agent": DESKTOP_UA,
         "Referer": "https://www.xiaohongshu.com/",
         "Accept-Language": "zh-CN,zh;q=0.9",
     }
     if settings.xhs_cookie:
         headers["Cookie"] = settings.xhs_cookie
-    resolved = await client.resolve(url, headers)
-    html = await client.get_text(resolved, headers)
+    resolved, html = await _fetch_share_page(url, client, headers)
     meta_video_url, meta_title = _extract_from_meta_tags(html)
     if meta_video_url:
         item_id = urlparse(url).path.rstrip("/").split("/")[-1]
@@ -87,7 +144,13 @@ async def parse_xiaohongshu(url: str, client: PlatformClient) -> ParsedMedia:
             author_name="", counts={},
         )
     if "/login" in resolved:
-        raise ValueError("小红书将分享页重定向到登录页；当前 Cookie 已失效或未被接受")
+        raise ValueError(
+            "小红书把分享页重定向到了登录页。已知原因：HTTP 客户端的 TLS 指纹被识别为"
+            "脚本（不是 Cookie、链接或出口 IP 的问题）。请检查 app/http_client.py 里的"
+            "IMPERSONATE 是否仍被小红书接受（对照参考项目 "
+            "https://github.com/JoeanAmier/XHS-Downloader 的 source/module/static.py），"
+            "必要时把它换成更新的 chrome 版本"
+        )
     data = load_embedded_json(html, "window.__INITIAL_STATE__")
     note = _find_note(data, urlparse(resolved).path.rstrip("/").split("/")[-1])
     if not note:

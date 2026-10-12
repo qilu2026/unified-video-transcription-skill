@@ -20,6 +20,9 @@ class FakeClient:
     async def get_text(self, url, headers):
         return self.html
 
+    async def get_page(self, url, headers, browser_fingerprint=False):
+        return self.resolved, self.html
+
     async def post_json(self, url, body, headers=None):
         return self.html
 
@@ -150,3 +153,13 @@ async def test_xiaohongshu_parser():
     assert parsed.cover_url == "https://img.example/x.jpg"
     assert parsed.author_name == "笔记作者"
     assert parsed.counts == {"likes": "1716", "favorites": "391", "comments": "17", "shares": "40"}
+
+
+@pytest.mark.asyncio
+async def test_xiaohongshu_parser_reports_rate_limit(monkeypatch):
+    """A share page parked on /login must raise a rate-limit error, not a parse error."""
+    monkeypatch.setenv("XHS_RETRY_DELAYS", "0,0,0")
+    client = FakeClient("https://www.xiaohongshu.com/login?redirectPath=%2Fexplore%2Fabc", "")
+    with pytest.raises(ValueError, match="登录页"):
+        await parse_xiaohongshu("https://xhslink.com/a", client)
+
