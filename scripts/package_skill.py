@@ -14,7 +14,6 @@
 from __future__ import annotations
 
 import argparse
-import filecmp
 import shutil
 import sys
 from pathlib import Path
@@ -60,7 +59,8 @@ def differences(root: Path = ROOT, destination: Path = DESTINATION) -> list[str]
         relative = source.relative_to(root).as_posix()
         if not target.is_file():
             stale.append(f"{relative}：runtime 里缺失")
-        elif not filecmp.cmp(source, target, shallow=False):
+        # 直接比字节：filecmp 按 (大小, 修改时间) 缓存结果，同步后再查可能拿到过期的答案
+        elif source.read_bytes() != target.read_bytes():
             stale.append(f"{relative}：内容与根目录不同")
     return stale
 
