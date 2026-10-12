@@ -1,4 +1,5 @@
 """Local reports; platform data is rendered as text, never executable markup."""
+import re
 from datetime import datetime
 from html import escape
 from urllib.parse import urlsplit, quote
@@ -81,37 +82,187 @@ def render_markdown(result):
     return "\n".join(rows)
 
 
+# 每个平台自己的品牌色，只用在顶部色带和平台标记上，让人一眼认出视频来自哪里
+PLATFORM_COLORS = {"douyin": "#FE2C55", "kuaishou": "#FF5000", "xiaohongshu": "#FF2442", "weixin": "#FA9D3B"}
+
+# 预览窗口（例如 Claude 的 HTML 预览）把链接转交给浏览器时会把地址改坏，所以每个链接都配一个复制按钮
+COPY_SCRIPT = """
+document.addEventListener("click", function (event) {
+  var button = event.target.closest("[data-copy]");
+  if (!button) return;
+  var value = button.getAttribute("data-copy");
+  if (value === "#transcript") value = document.getElementById("transcript").innerText.trim();
+  var done = function (ok) {
+    var label = button.textContent;
+    button.textContent = ok ? "已复制" : "复制失败，请手动选中";
+    button.classList.toggle("is-done", ok);
+    setTimeout(function () { button.textContent = label; button.classList.remove("is-done"); }, 1600);
+  };
+  var fallback = function () {
+    var area = document.createElement("textarea");
+    area.value = value;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    var ok = false;
+    try { ok = document.execCommand("copy"); } catch (error) { ok = false; }
+    document.body.removeChild(area);
+    done(ok);
+  };
+  if (navigator.clipboard && window.isSecureContext !== false) {
+    navigator.clipboard.writeText(value).then(function () { done(true); }, fallback);
+  } else {
+    fallback();
+  }
+});
+"""
+
+STYLE = """
+:root{--paper:#FBFBF9;--panel:#F2F3F4;--ink:#1E2328;--muted:#5F6670;--rule:#E1E3E6;
+--serif:"Source Han Serif SC","Noto Serif CJK SC","Noto Serif SC","Songti SC","STSong","SimSun",serif;
+--sans:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",system-ui,-apple-system,"Segoe UI",sans-serif;color-scheme:light}
+*{box-sizing:border-box}
+html{background:var(--paper)}
+body{margin:0;color:var(--ink);font:15px/1.7 var(--sans);border-top:5px solid var(--brand)}
+.page{max-width:1120px;margin:0 auto;padding:56px 32px 40px}
+.head{max-width:44em;margin-bottom:44px}
+.byline{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin:0 0 14px;color:var(--muted);font-size:14px}
+.platform{display:inline-flex;align-items:center;gap:7px;color:var(--ink);font-weight:600}
+.platform::before{content:"";width:9px;height:9px;border-radius:50%;background:var(--brand)}
+h1{margin:0;font:700 clamp(26px,3.4vw,38px)/1.32 var(--sans);letter-spacing:-.01em;text-wrap:balance}
+.caption{margin:14px 0 0;max-width:40em;color:var(--muted);font-size:15px;white-space:pre-line}
+.tags{display:flex;flex-wrap:wrap;gap:6px 12px;margin:14px 0 0;padding:0;list-style:none;color:var(--muted);font-size:14px}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:72px;align-items:start}
+.reading-head{display:flex;align-items:center;gap:12px;margin-bottom:22px;padding-bottom:12px;border-bottom:1px solid var(--rule)}
+h2{margin:0;font-size:15px;font-weight:600}
+.reading-head span{margin-left:auto;color:var(--muted);font-size:13px}
+.reading-head button{border-color:var(--rule)}
+#transcript{max-width:34em;font:19px/2.05 var(--serif);text-align:justify;hanging-punctuation:allow-end}
+#transcript p{margin:0 0 1.15em;text-indent:2em}
+#transcript p:last-child{margin-bottom:0}
+aside{position:sticky;top:28px;display:grid;gap:30px}
+aside section{border-top:1px solid var(--rule);padding-top:14px}
+aside h2{margin-bottom:12px}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:14px 18px;margin:0}
+.stats div{display:flex;flex-direction:column-reverse}
+.stats dt{color:var(--muted);font-size:13px}
+.stats dd{margin:0;font-size:22px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.3}
+.note{margin:10px 0 0;color:var(--muted);font-size:12.5px;line-height:1.6}
+.links{margin:0;padding:0;list-style:none;display:grid;gap:8px}
+.links li{display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--panel);border-radius:10px}
+.links .name{flex:1;min-width:0;font-size:14px}
+.links li.main{background:var(--ink);color:#fff}
+a.open,button{font:inherit;font-size:13px;border-radius:7px;padding:4px 10px;cursor:pointer;white-space:nowrap;text-decoration:none}
+a.open{color:inherit;border:1px solid currentColor}
+button{border:1px solid transparent;background:#fff;color:var(--ink)}
+.main button{background:rgba(255,255,255,.14);color:#fff}
+button.is-done{background:#1F7A4D;color:#fff}
+a.open:hover,button:hover{text-decoration:underline}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.main :focus-visible{outline-color:#fff}
+.meta{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0;font-size:13px}
+.meta dt{color:var(--muted)}
+.meta dd{margin:0;overflow-wrap:anywhere}
+footer{margin-top:64px;padding-top:14px;border-top:1px solid var(--rule);color:var(--muted);font-size:12.5px}
+@media (max-width:860px){.page{padding:36px 20px}.layout{grid-template-columns:1fr;gap:44px}aside{position:static}#transcript{font-size:18px}}
+@media print{body{border-top:0}.page{padding:0}.layout{grid-template-columns:1fr}aside{position:static}button,a.open{display:none}.links li{background:none;padding:0;color:var(--ink)}}
+"""
+
+
+def _readable_count(value):
+    text = str(value).strip()
+    if not text.isdigit() or int(text) < 10000:
+        return text
+    number = int(text)
+    if number >= 100_000_000:
+        return f"{number / 100_000_000:.1f}".rstrip("0").rstrip(".") + "亿"
+    return f"{number / 10000:.1f}".rstrip("0").rstrip(".") + "万"
+
+
+def _split_title(title):
+    """把话题标签从标题里拆出来；第一行做大标题，其余放在下面。"""
+    text = str(title or "")
+    tags = list(dict.fromkeys(re.findall(r"#([^#\s]+)", text)))
+    cleaned = re.sub(r"#[^#\s]+", "", text)
+    lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+    headline = lines[0] if lines else ""
+    return headline, "\n".join(lines[1:]), tags
+
+
+def _captured_label(value):
+    try:
+        return datetime.fromisoformat(str(value)).strftime("%Y-%m-%d %H:%M")
+    except ValueError:
+        return str(value or "")
+
+
 def render_html(result):
-    def a(label, url, primary=False):
+    platform = PLATFORMS.get(result["platform"], result["platform"])
+    brand = PLATFORM_COLORS.get(result["platform"], "#1E2328")
+    headline, caption, tags = _split_title(result.get("title"))
+    headline = headline or result.get("author_name") or "视频文稿"
+
+    def link_row(name, url, main=False):
         url = safe_url(url)
-        return f'<a class="button {"primary" if primary else ""}" href="{escape(url, quote=True)}" target="_blank" rel="noopener noreferrer">{escape(label)}</a>' if url else ""
-    links = a("打开原视频", result["source_url"])
-    for i, (kind, url) in enumerate(result.get("media_urls", []), 1):
-        links += a(f"{'视频' if kind == 'video' else '媒体'}地址 {i} · 打开 / 下载", url, True)
-    links += a("查看封面", result.get("cover_url"))
-    stats = "".join(f'<div class="stat"><strong>{escape(str(value))}</strong><span>{label}</span></div>' for label, value in available_counts(result))
-    if not stats:
-        stats = '<p class="muted">平台未返回互动数据。</p>'
-    meta = "".join(f'<dt>{label}</dt><dd>{escape(str(value))}</dd>' for label, value in metadata(result))
-    paragraphs = "".join(f'<p>{escape(p).replace(chr(10), "<br>")}</p>' for p in result["transcript"].split("\n\n") if p.strip())
+        if not url:
+            return ""
+        attr = escape(url, quote=True)
+        row_class = ' class="main"' if main else ""
+        return (f'<li{row_class}><span class="name">{escape(name)}</span>'
+                f'<a class="open" href="{attr}" target="_blank" rel="noopener noreferrer">打开</a>'
+                f'<button type="button" data-copy="{attr}">复制链接</button></li>')
+
+    links = ""
+    for index, (kind, url) in enumerate(result.get("media_urls", []), 1):
+        name = "视频文件" if kind == "video" else "媒体文件"
+        links += link_row(name if len(result.get("media_urls", [])) == 1 else f"{name} {index}", url, main=index == 1)
+    links += link_row("原视频页面", result.get("source_url"))
+    links += link_row("视频封面", result.get("cover_url"))
+
+    counts = available_counts(result)
+    stats = ("<dl class=\"stats\">" + "".join(
+        f"<div><dt>{label}</dt><dd>{escape(_readable_count(value))}</dd></div>" for label, value in counts) + "</dl>"
+             if counts else '<p class="note">平台没有返回互动数据。</p>')
+
+    meta_rows = [(label, value) for label, value in metadata(result) if label not in ("平台", "作者")]
+    meta = "".join(f"<dt>{escape(label)}</dt><dd>{escape(str(value))}</dd>" for label, value in meta_rows)
+
+    byline = [f'<span class="platform">{escape(platform)}</span>']
+    if result.get("author_name"):
+        byline.append(f"<span>{escape(result['author_name'])}</span>")
+    if result.get("captured_at"):
+        byline.append(f"<span>转写于 {escape(_captured_label(result['captured_at']))}</span>")
+
+    paragraphs = "".join(f"<p>{escape(p.strip()).replace(chr(10), '<br>')}</p>"
+                         for p in result["transcript"].split("\n\n") if p.strip())
+    char_count = len(re.sub(r"\s", "", result["transcript"]))
+    tag_list = ('<ul class="tags">' + "".join(f"<li>#{escape(tag)}</li>" for tag in tags) + "</ul>") if tags else ""
+    caption_html = f'<p class="caption">{escape(caption)}</p>' if caption else ""
+
     return f'''<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>视频转写 · {escape(result['author_name'] or '文稿')}</title>
-<style>
-:root{{color-scheme:light;--ink:#19312c;--muted:#65746b;--line:#dce3da;--accent:#236a51}}
-*{{box-sizing:border-box}}body{{margin:0;background:#f3f4ee;color:var(--ink);font:16px/1.75 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}}
-main{{max-width:960px;margin:48px auto;padding:0 24px}}.eyebrow{{color:var(--accent);font-size:12px;letter-spacing:.18em;font-weight:700}}
-h1{{font-size:38px;line-height:1.25;letter-spacing:-.03em;margin:12px 0}}.description{{max-width:800px;color:#53635b;font-size:16px}}
-.card{{background:#fff;border:1px solid var(--line);border-radius:18px;padding:28px;margin:22px 0}}h2{{font-size:19px;margin:0 0 18px}}.stats{{display:flex;flex-wrap:wrap;gap:24px}}.stat{{min-width:100px}}.stat strong{{display:block;font-size:27px;font-weight:600}}.stat span,.muted{{color:var(--muted);font-size:13px}}
-.links{{display:flex;flex-wrap:wrap;gap:10px}}.button{{display:inline-block;border:1px solid var(--line);border-radius:8px;padding:9px 14px;text-decoration:none;color:var(--ink);font-size:14px}}.primary{{background:var(--accent);color:white;border-color:var(--accent)}}a:focus-visible{{outline:3px solid #ce9a24;outline-offset:3px}}
-dl{{display:grid;grid-template-columns:180px 1fr;gap:10px 20px;font-size:13px}}dt{{color:var(--muted)}}dd{{margin:0;overflow-wrap:anywhere}}.transcript p{{font-size:19px;line-height:2;white-space:normal;margin:0 0 20px}}.transcript p:last-child{{margin-bottom:0}}footer{{color:var(--muted);font-size:12px;margin:26px 0}}
-@media(max-width:600px){{main{{margin:28px auto;padding:0 16px}}h1{{font-size:30px}}.card{{padding:20px}}dl{{grid-template-columns:1fr;gap:4px}}dd{{margin-bottom:10px}}.transcript p{{font-size:17px}}}}
-@media print{{body{{background:#fff}}main{{margin:0;max-width:none}}.card{{break-inside:avoid}}.button{{border:0;padding:0}}}}
-</style></head><body><main>
-<header><div class="eyebrow">VIDEO TRANSCRIPT / 视频转写</div><h1>{escape(result['author_name'] or '视频文稿')}</h1><p class="description">{escape(result['title'])}</p></header>
-<section class="card"><h2>视频数据</h2><div class="stats">{stats}</div><p class="muted">仅展示平台实际返回的数据；未返回项目不按 0 计算。数据为获取时的快照。</p></section>
-<section class="card transcript"><h2>转写正文</h2>{paragraphs}</section>
-<section class="card"><h2>链接与下载</h2><div class="links">{links}</div><p class="muted">{escape(link_note(result))} 打开视频后可使用浏览器的保存功能。</p></section>
-<section class="card"><h2>来源信息</h2><dl>{meta}</dl></section>
-<footer>本地生成 · 正文保留转写原文 · 外部视频及封面需联网打开</footer>
-</main></body></html>'''
+<title>{escape(headline)} · {escape(platform)}转写</title>
+<style>:root{{--brand:{brand}}}{STYLE}</style></head><body>
+<div class="page">
+<header class="head">
+<p class="byline">{"".join(byline)}</p>
+<h1>{escape(headline)}</h1>{caption_html}{tag_list}
+</header>
+<div class="layout">
+<article>
+<div class="reading-head"><h2>转写正文</h2><span>{char_count} 字</span><button type="button" data-copy="#transcript">复制全文</button></div>
+<div id="transcript">{paragraphs}</div>
+</article>
+<aside>
+<section><h2>互动数据</h2>{stats}<p class="note">只列平台实际返回的数据，是转写时的快照。</p></section>
+<section><h2>链接</h2><ul class="links">{links}</ul>
+<p class="note">{escape(link_note(result))}在 Claude 等应用的预览窗口里点“打开”可能失败，请点“复制链接”后粘贴到浏览器，或直接用浏览器打开这份文稿。</p></section>
+<section><h2>来源</h2><dl class="meta">{meta}</dl></section>
+</aside>
+</div>
+<footer>这份文稿在你的电脑上生成，正文保留转写原文；视频和封面链接需要联网才能打开。</footer>
+</div>
+<script>{COPY_SCRIPT}</script>
+</body></html>'''
