@@ -1,3 +1,4 @@
 httpx==0.28.1
 curl_cffi==0.16.3
+gmssl==3.2.2
 imageio-ffmpeg==0.6.0

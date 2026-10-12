@@ -10,6 +10,34 @@ from app.parsers.common import first_url, load_embedded_json, walk_dicts
 MOBILE_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 Version/16.0 Mobile/15E148 Safari/604.1"
 
 
+async def fetch_guest_detail(item_id: str, source_url: str) -> dict | None:
+    """用匿名访客身份请求作品详情（见 app/parsers/douyin_guest），返回 aweme_detail。"""
+    from app.parsers.douyin_guest import DouyinGuestAPI
+
+    return await DouyinGuestAPI().fetch_detail(item_id, source_url=source_url)
+
+
+async def _item_from_share_page(
+    client: PlatformClient, resolved: str, item_id: str, headers: dict[str, str]
+) -> dict | None:
+    """旧做法：从分享页的 window._ROUTER_DATA 里找作品。拿到空壳时返回 None。"""
+    for page_url in (resolved, f"https://www.iesdouyin.com/share/video/{item_id}"):
+        try:
+            html = await client.get_text(page_url, headers)
+            data = load_embedded_json(html, "window._ROUTER_DATA")
+        except (ValueError, KeyError):
+            continue
+        items = [
+            item
+            for item in walk_dicts(data)
+            if isinstance(item.get("video"), dict) and (item.get("aweme_id") or item.get("desc") is not None)
+        ]
+        item = next((value for value in items if str(value.get("aweme_id")) == item_id), items[0] if items else None)
+        if item:
+            return item
+    return None
+
+
 async def parse_douyin(url: str, client: PlatformClient) -> ParsedMedia:
     headers = {"User-Agent": MOBILE_UA, "Accept-Language": "zh-CN,zh;q=0.9"}
     resolved = await client.resolve(url, headers)
@@ -20,26 +48,19 @@ async def parse_douyin(url: str, client: PlatformClient) -> ParsedMedia:
         raise ValueError("无法从抖音链接识别作品 ID")
     item_id = match.group(1)
 
-    candidates = [resolved, f"https://www.iesdouyin.com/share/video/{item_id}"]
-    data = None
-    for page_url in candidates:
-        try:
-            html = await client.get_text(page_url, headers)
-            data = load_embedded_json(html, "window._ROUTER_DATA")
-            break
-        except (ValueError, KeyError):
-            continue
-    if data is None:
-        raise ValueError("抖音页面未返回可解析的作品数据")
-
-    items = [
-        item
-        for item in walk_dicts(data)
-        if isinstance(item.get("video"), dict) and (item.get("aweme_id") or item.get("desc") is not None)
-    ]
-    item = next((value for value in items if str(value.get("aweme_id")) == item_id), items[0] if items else None)
+    # 先走匿名访客详情接口：分享页经常只给一个不含作品数据的空壳（实测连续十几次都是空壳）。
+    # 访客接口失败时再退回解析分享页，两条都不行才报错。
+    guest_error = ""
+    try:
+        item = await fetch_guest_detail(item_id, resolved)
+    except Exception as exc:
+        item = None
+        guest_error = str(exc)
     if not item:
-        raise ValueError("抖音作品数据缺少视频信息")
+        item = await _item_from_share_page(client, resolved, item_id, headers)
+    if not item:
+        detail = f"（访客接口：{guest_error}）" if guest_error else ""
+        raise ValueError(f"抖音作品数据缺少视频信息：分享页没有返回作品数据{detail}")
 
     video = item["video"]
     play_addr = video.get("play_addr") or video.get("playAddr") or {}

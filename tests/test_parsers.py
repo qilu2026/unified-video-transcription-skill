@@ -94,7 +94,43 @@ async def test_weixin_yuanbao_parser(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_douyin_parser():
+async def test_douyin_prefers_guest_detail_api(monkeypatch):
+    from app.parsers import douyin
+
+    async def fake_guest(item_id, source_url):
+        assert item_id == "1234567890123456789"
+        return {"aweme_id": item_id, "desc": "访客接口", "video": {"play_addr": {"uri": "guest-uri"}},
+                "author": {"nickname": "作者"}, "statistics": {"digg_count": 5}}
+
+    monkeypatch.setattr(douyin, "fetch_guest_detail", fake_guest)
+    client = FakeClient("https://www.douyin.com/video/1234567890123456789", "<html>空壳，不该被读取</html>")
+    parsed = await parse_douyin("https://v.douyin.com/a", client)
+    assert parsed.title == "访客接口"
+    assert "guest-uri" in parsed.media_urls[0][1]
+    assert parsed.counts == {"likes": "5"}
+
+
+@pytest.mark.asyncio
+async def test_douyin_reports_both_paths_when_guest_and_share_page_fail(monkeypatch):
+    from app.parsers import douyin
+
+    async def failing_guest(item_id, source_url):
+        raise RuntimeError("signed guest detail failed: status 403")
+
+    monkeypatch.setattr(douyin, "fetch_guest_detail", failing_guest)
+    shell = '<script>window._ROUTER_DATA = {"loaderData": {"video_(id)/page": {"itemId": "1"}}}</script>'
+    with pytest.raises(ValueError, match="访客接口.*403"):
+        await parse_douyin("https://v.douyin.com/a", FakeClient("https://www.douyin.com/video/1234567890123456789", shell))
+
+
+@pytest.mark.asyncio
+async def test_douyin_parser(monkeypatch):
+    from app.parsers import douyin
+
+    async def failing_guest(item_id, source_url):
+        raise RuntimeError("guest unavailable")
+
+    monkeypatch.setattr(douyin, "fetch_guest_detail", failing_guest)
     data = {"loaderData": {"item": {"aweme_id": "1234567890123456789", "desc": "测试抖音", "video": {"play_addr": {"uri": "video-uri"}, "cover": {"url_list": ["https://img.example/cover.jpg"]}}}}}
     data["loaderData"]["item"].update({"author": {"nickname": "测试作者"}, "statistics": {"digg_count": 0, "comment_count": 37, "collect_count": 177, "share_count": 42}})
     html = f"<script>window._ROUTER_DATA = {json.dumps(data)}</script>"

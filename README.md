@@ -113,10 +113,10 @@ Resolved media links may expire, and some platforms require a specific referrer 
 
 ## 来源与许可证 / Sources and licensing
 
-本项目参考了 [unified-video-parser](https://github.com/zql15857082982-art/unified-video-parser)、[douyin-downloader](https://github.com/jiji262/douyin-downloader)、[video-parser](https://github.com/wwwzhouhui/video-parser) 和 [rednote-api](https://github.com/hostinger-bot/rednote-api)。这些项目的许可证、版权声明和核对记录见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 及 `third_party/`。
+本项目参考了 [douyin-downloader](https://github.com/jiji262/douyin-downloader)、[video-parser](https://github.com/wwwzhouhui/video-parser)、[rednote-api](https://github.com/hostinger-bot/rednote-api) 和 [XHS-Downloader](https://github.com/JoeanAmier/XHS-Downloader)，并复制了 [astrbot_plugin_link_resolver](https://github.com/vacacia/astrbot_plugin_link_resolver) 的抖音访客接口代码。每个平台用了哪个项目的什么方法、核对时对应的提交，以及各项目的许可证，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 及 `third_party/`。
 
-This repository was split from and modified from a local version of [unified-video-parser](https://github.com/zql15857082982-art/unified-video-parser). The original project listed [douyin-downloader](https://github.com/jiji262/douyin-downloader), [video-parser](https://github.com/wwwzhouhui/video-parser), and [rednote-api](https://github.com/hostinger-bot/rednote-api) as references. Their licenses, copyright notices, and verification records are included in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and `third_party/`.
+This project draws on [douyin-downloader](https://github.com/jiji262/douyin-downloader), [video-parser](https://github.com/wwwzhouhui/video-parser), [rednote-api](https://github.com/hostinger-bot/rednote-api), and [XHS-Downloader](https://github.com/JoeanAmier/XHS-Downloader), and copies the Douyin guest-API code from [astrbot_plugin_link_resolver](https://github.com/vacacia/astrbot_plugin_link_resolver). [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and `third_party/` list, per platform, which method came from which project, the commit last checked, and each license.
 
-本项目采用 MIT License。外部服务（MiMo、腾讯元宝和视频平台）各自有自己的服务条款。请只处理你有权使用的内容，并自行承担账号、用量和平台合规责任。
+本项目采用 [AGPL-3.0](LICENSE) 许可证。外部服务（MiMo、腾讯元宝和视频平台）各自有自己的服务条款。请只处理你有权使用的内容，并自行承担账号、用量和平台合规责任。
 
-This project is released under the MIT License. External services (MiMo, Tencent Yuanbao, and the video platforms) have their own terms. Process only content you are authorized to use and remain responsible for your accounts, usage, and compliance.
+This project is released under the [AGPL-3.0](LICENSE). External services (MiMo, Tencent Yuanbao, and the video platforms) have their own terms. Process only content you are authorized to use and remain responsible for your accounts, usage, and compliance.
