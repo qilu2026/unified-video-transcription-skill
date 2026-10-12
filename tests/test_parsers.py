@@ -192,6 +192,24 @@ async def test_xiaohongshu_parser():
 
 
 @pytest.mark.asyncio
+async def test_xiaohongshu_expired_link_says_reshare_not_cookie():
+    """xsec_token 过期会跳到 /404；提示要让用户重新分享，而不是去配 Cookie。"""
+    client = FakeClient("https://www.xiaohongshu.com/404?source=note", "<html>你访问的页面不见了</html>")
+    with pytest.raises(ValueError, match="重新点“分享”") as caught:
+        await parse_xiaohongshu("https://xhslink.com/a", client)
+    assert "XHS_COOKIE" not in str(caught.value)
+
+
+@pytest.mark.asyncio
+async def test_kuaishou_share_count_prefers_share_count():
+    data = {"photo": {"photoId": "abc", "caption": "标题", "shareCount": 9542, "forwardCount": 0,
+                      "manifest": {"playInfo": {"adaptationSet": [{"representation": [{"url": "https://cdn.example/k.mp4"}]}]}}}}
+    html = f"<script>window.INIT_STATE = {json.dumps(data)};</script>"
+    parsed = await parse_kuaishou("https://v.kuaishou.com/a", FakeClient("https://v.m.chenzhongtech.com/fw/photo/abc", html))
+    assert parsed.counts["shares"] == "9542"
+
+
+@pytest.mark.asyncio
 async def test_xiaohongshu_parser_reports_rate_limit(monkeypatch):
     """A share page parked on /login must raise a rate-limit error, not a parse error."""
     monkeypatch.setenv("XHS_RETRY_DELAYS", "0,0,0")

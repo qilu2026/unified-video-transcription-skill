@@ -89,6 +89,7 @@ async def parse_kuaishou(url: str, client: PlatformClient) -> ParsedMedia:
         author_name=str(photo.get("userName") or ""),
         counts={label: str(photo[key]) for label, key in (
             ("likes", "likeCount"), ("comments", "commentCount"),
-            ("shares", "forwardCount"), ("views", "viewCount"),
+            ("shares", "shareCount" if photo.get("shareCount") not in (None, "") else "forwardCount"),
+            ("views", "viewCount"),
         ) if photo.get(key) not in (None, "")},
     )

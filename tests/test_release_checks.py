@@ -163,6 +163,26 @@ async def test_chunks_are_transcribed_in_order_and_joined(tmp_path, monkeypatch)
     assert await transcribe.transcribe_audio(path) == "第一段。第三段。"
 
 
+@pytest.mark.asyncio
+async def test_mimo_retired_model_tells_user_to_update(tmp_path, monkeypatch):
+    path = tmp_path / "audio.mp3"
+    path.write_bytes(b"test")
+    _mock_mimo(monkeypatch, [(400, {"error": {"message": "model not found"}})])
+    with pytest.raises(RuntimeError, match="更新本 Skill"):
+        await transcribe.transcribe_mimo(path)
+
+
+def test_doctor_reports_missing_config(tmp_path, capsys):
+    assert transcribe.doctor(tmp_path / "missing.env") == 1
+    assert "找不到" in capsys.readouterr().out
+
+
+def test_cli_requires_link_unless_doctor(monkeypatch):
+    monkeypatch.setattr("sys.argv", ["transcribe"])
+    with pytest.raises(SystemExit):
+        transcribe.main()
+
+
 def test_join_chunks_keeps_english_words_apart():
     assert transcribe.join_chunks(["中文结尾。", "接着说"]) == "中文结尾。接着说"
     assert transcribe.join_chunks(["the end.", "Next part"]) == "the end. Next part"

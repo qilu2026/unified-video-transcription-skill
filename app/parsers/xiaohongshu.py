@@ -143,6 +143,13 @@ async def parse_xiaohongshu(url: str, client: PlatformClient) -> ParsedMedia:
             headers={"User-Agent": DESKTOP_UA, "Referer": resolved},
             author_name="", counts={},
         )
+    if "/404" in urlparse(resolved).path or "error_code=300031" in resolved:
+        # xsec_token 过期或笔记不可浏览时，小红书跳到 /404（不带 token 时是 300031）。
+        # 这跟 Cookie 无关，别让用户去折腾 XHS_COOKIE。
+        raise ValueError(
+            "小红书链接已失效或笔记不可浏览：分享链接里的 xsec_token 会过期。"
+            "请在小红书 App 或网页里重新点“分享”复制新链接再试"
+        )
     if "/login" in resolved:
         raise ValueError(
             "小红书把分享页重定向到了登录页。已知原因：HTTP 客户端的 TLS 指纹被识别为"

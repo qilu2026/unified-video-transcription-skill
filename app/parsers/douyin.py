@@ -60,7 +60,11 @@ async def parse_douyin(url: str, client: PlatformClient) -> ParsedMedia:
         item = await _item_from_share_page(client, resolved, item_id, headers)
     if not item:
         detail = f"（访客接口：{guest_error}）" if guest_error else ""
-        raise ValueError(f"抖音作品数据缺少视频信息：分享页没有返回作品数据{detail}")
+        raise ValueError(
+            "抖音作品数据缺少视频信息：访客接口和分享页都没有拿到作品数据"
+            f"{detail}。如果作品在浏览器里能正常打开，多半是抖音改了签名，请更新本 Skill 后重试；"
+            "也可能是作品已删除或设为私密"
+        )
 
     video = item["video"]
     play_addr = video.get("play_addr") or video.get("playAddr") or {}

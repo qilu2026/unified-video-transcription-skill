@@ -128,5 +128,9 @@ async def parse_weixin(url: str, client: PlatformClient) -> ParsedMedia:
         return await parse_via_yuanbao(url, client)
     except Exception as exc:
         if not settings.weixin_worker_fallback:
-            raise ValueError(f"元宝解析失败：{exc}") from exc
+            raise ValueError(
+                f"元宝解析失败：{exc}。视频号要靠腾讯元宝的登录状态解析，Cookie 过期后会失败："
+                "请重新登录 https://yuanbao.tencent.com/ ，按 README 的方法复制 Cookie，"
+                "更新 config.env 里的 YUANBAO_COOKIE"
+            ) from exc
         return await parse_via_worker(url, client)

@@ -134,8 +134,9 @@ async def transcribe_mimo(audio_path: Path, attempts: int = 3) -> str:
         "asr_options": {"language": "auto"},
     }
     hints = {
-        401: "MiMo 密钥无效或已失效，请更新 MIMO_API_KEY",
-        402: "MiMo 额度不足，请到开放平台查看余额",
+        401: "MiMo 密钥无效或已失效：请到 https://platform.xiaomimimo.com/ 控制台 > API Keys "
+             "重新创建，更新 config.env 里的 MIMO_API_KEY",
+        402: "MiMo 额度不足，请到 https://platform.xiaomimimo.com/ 查看余额并充值",
         403: "MiMo 拒绝访问，请检查账号和模型使用权限",
         429: "MiMo 请求受限，请查看账号额度或稍后再试",
     }
@@ -154,7 +155,18 @@ async def transcribe_mimo(audio_path: Path, attempts: int = 3) -> str:
             last_problem = f"服务暂时出错（HTTP {response.status_code}）"
             continue
         if response.is_error:
-            raise RuntimeError(hints.get(response.status_code, f"MiMo 服务返回 HTTP {response.status_code}，本次未生成文稿"))
+            if response.status_code in hints:
+                raise RuntimeError(hints[response.status_code])
+            try:
+                reason = str((response.json().get("error") or {}).get("message") or "")[:200]
+            except ValueError:
+                reason = response.text.strip()[:200]
+            message = f"MiMo 服务返回 HTTP {response.status_code}，本次未生成文稿"
+            if reason:
+                message += f"（{reason}）"
+            if "model" in reason.lower() or response.status_code == 404:
+                message += f"。可能是模型 {MIMO_MODEL} 已下线或改名，请更新本 Skill"
+            raise RuntimeError(message)
         choice = response.json()["choices"][0]
         if choice.get("finish_reason") not in (None, "stop"):
             raise RuntimeError("MiMo 未完整结束转写，本次不保存可能被截断的文稿")
@@ -218,13 +230,92 @@ def write_reports(result: dict, output: Path, overwrite: bool = False) -> list[P
     return [output]
 
 
+def _check_mimo_key() -> tuple[bool, str]:
+    """用 1 秒静音真调一次 ASR，确认密钥、额度和模型都可用。费用可忽略。"""
+    with tempfile.TemporaryDirectory(prefix="video-transcription-doctor-") as directory:
+        audio = Path(directory) / "silence.mp3"
+        subprocess.run(
+            [ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi",
+             "-i", "anullsrc=r=16000:cl=mono", "-t", "1", "-c:a", "libmp3lame", str(audio)],
+            check=True, capture_output=True, timeout=60,
+        )
+        try:
+            asyncio.run(transcribe_mimo(audio, attempts=1))
+        except RuntimeError as exc:
+            return False, str(exc)
+    return True, f"密钥有效，模型 {MIMO_MODEL} 可用"
+
+
+def _check_douyin_guest() -> tuple[bool, str]:
+    from app.parsers.douyin_guest import DouyinGuestAPI
+
+    try:
+        asyncio.run(DouyinGuestAPI()._create_session())
+    except Exception as exc:
+        return False, f"拿不到匿名访客身份（{exc}），抖音会退回解析分享页，可能失败"
+    return True, "匿名访客身份可用"
+
+
+def doctor(config: Path) -> int:
+    """安装后或转写失败时运行：逐项检查环境，告诉用户哪一项需要处理。"""
+    results: list[tuple[str, str, str]] = []  # (状态, 项目, 说明)；状态为 ok / warn / fail
+
+    def record(name: str, ok: bool, detail: str, *, optional: bool = False) -> None:
+        results.append(("ok" if ok else ("warn" if optional else "fail"), name, detail))
+
+    record("Python 版本", sys.version_info >= (3, 10), sys.version.split()[0] + "（需要 3.10 或更新）")
+    for module in ("httpx", "curl_cffi", "gmssl", "imageio_ffmpeg"):
+        try:
+            __import__(module)
+            record(f"依赖 {module}", True, "已安装")
+        except ImportError:
+            record(f"依赖 {module}", False, "未安装：请重新运行 scripts/setup.py")
+    try:
+        subprocess.run([ffmpeg_path(), "-version"], check=True, capture_output=True, timeout=30)
+        record("FFmpeg", True, ffmpeg_path())
+    except Exception as exc:
+        record("FFmpeg", False, f"无法运行（{exc}）：请重新运行 scripts/setup.py，或在 config.env 里设置 FFMPEG_PATH")
+
+    config_ok = config.exists()
+    record("配置文件", config_ok, str(config) if config_ok else f"找不到 {config}：请先运行 scripts/setup.py")
+    if config_ok:
+        load_config(config)
+        if not os.getenv("MIMO_API_KEY", "").strip():
+            record("MiMo API Key", False, "config.env 里没有 MIMO_API_KEY")
+        elif all(status != "fail" for status, *_ in results):
+            record("MiMo API Key", *_check_mimo_key())
+        record("视频号（元宝 Cookie）", bool(os.getenv("YUANBAO_COOKIE", "").strip()),
+               "已配置" if os.getenv("YUANBAO_COOKIE", "").strip() else "未配置 YUANBAO_COOKIE，视频号无法解析；其他平台不受影响",
+               optional=True)
+        for key, platform in (("XHS_COOKIE", "小红书"), ("KUAISHOU_COOKIE", "快手")):
+            configured = bool(os.getenv(key, "").strip())
+            record(f"{platform} Cookie", True, "已配置" if configured else "未配置（可选，遇到登录或风控提示时再配置）")
+        if any(status == "ok" and name == "依赖 gmssl" for status, name, _ in results):
+            record("抖音访客接口", *_check_douyin_guest(), optional=True)
+
+    marks = {"ok": "✅", "warn": "⚠️", "fail": "❌"}
+    for status, name, detail in results:
+        print(f"{marks[status]} {name}：{detail}")
+    failed = [name for status, name, _ in results if status == "fail"]
+    if failed:
+        print(f"\n有 {len(failed)} 项需要处理：{'、'.join(failed)}")
+        return 1
+    print("\n环境检查通过。")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="将视频分享链接转为本地 HTML 文稿")
-    parser.add_argument("text", help="视频链接或平台复制的完整分享文案")
+    parser.add_argument("text", nargs="?", help="视频链接或平台复制的完整分享文案")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
-    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--output", type=Path)
     parser.add_argument("--overwrite", action="store_true", help="允许替换已有 HTML；默认保留已有文件")
+    parser.add_argument("--doctor", action="store_true", help="检查安装和配置，不转写")
     args = parser.parse_args()
+    if args.doctor:
+        return doctor(args.config.expanduser())
+    if not args.text or not args.output:
+        parser.error("需要提供分享链接和 --output；只检查环境时使用 --doctor")
     try:
         load_config(args.config.expanduser())
         if args.output.suffix.lower() != ".html":
