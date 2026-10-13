@@ -4,6 +4,14 @@
 
 Turn Douyin, Kuaishou, Xiaohongshu, and WeChat Channels share links into readable, saveable HTML transcripts on the user's own computer.
 
+## 效果展示 / Showcase
+
+四个平台各转写一条视频生成的 HTML 文稿（左上起：抖音、视频号、快手、小红书）：
+
+HTML transcripts generated from one video on each platform (from top left: Douyin, WeChat Channels, Kuaishou, Xiaohongshu):
+
+![四个平台的转写文稿示例 / Sample transcripts from four platforms](docs/showcase.png)
+
 ## 功能 / Features
 
 - 固定生成本地 HTML，包含转写正文、原链接、解析后的媒体下载链接、封面链接、作者、作品 ID 和平台实际返回的数据。
