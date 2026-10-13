@@ -29,7 +29,7 @@ Turn Douyin, Kuaishou, Xiaohongshu, and WeChat Channels share links into readabl
 Give the Skill folder or this link to an agent that supports GitHub Skill installation:
 
 ```text
-https://github.com/zql15857082982-art/unified-video-transcription-skill/tree/main/skills/video-transcription
+https://github.com/qilu2026/unified-video-transcription-skill/tree/main/skills/video-transcription
 ```
 
 可以这样说：
