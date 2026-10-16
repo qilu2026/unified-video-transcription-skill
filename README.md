@@ -4,6 +4,10 @@
 
 Turn Douyin, Kuaishou, Xiaohongshu, and WeChat Channels share links into readable, saveable HTML transcripts on the user's own computer.
 
+国内访问 GitHub 较慢时，可使用 Gitee 镜像：[gitee.com/qilu2026/unified-video-transcription-skill](https://gitee.com/qilu2026/unified-video-transcription-skill)，两边内容同步更新。
+
+Mirror for users in mainland China: [Gitee](https://gitee.com/qilu2026/unified-video-transcription-skill). Both copies are kept in sync.
+
 ## 效果展示 / Showcase
 
 四个平台各转写一条视频生成的 HTML 文稿（左上起：抖音、视频号、快手、小红书）：
@@ -48,7 +52,7 @@ You can say:
 >
 > Install this Skill, help me configure it locally as described, and transcribe this video link.
 
-也可以下载仓库后，从 `skills/video-transcription` 文件夹安装。已在 Windows 上实测（2026-10，Python 3.12 和 3.13）；macOS 尚未实测。其他 agent 是否支持自动安装，取决于其自身能力。
+也可以下载仓库后，从 `skills/video-transcription` 文件夹安装。agent 访问不了 GitHub 时，在 [Gitee 仓库](https://gitee.com/qilu2026/unified-video-transcription-skill) 页面点"克隆/下载 → 下载 ZIP"，解压后把其中的 `skills/video-transcription` 文件夹交给 agent 安装。已在 Windows 上实测（2026-10，Python 3.12 和 3.13）；macOS 尚未实测。其他 agent 是否支持自动安装，取决于其自身能力。
 
 You can also clone or download the repository and install the `skills/video-transcription` folder manually. Tested on Windows (2026-10, Python 3.12 and 3.13); macOS has not been tested yet. Automatic installation support depends on the agent.
 
